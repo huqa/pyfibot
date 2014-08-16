@@ -141,9 +141,14 @@ namedays.append(['Oskari', 'Anelma, Unelma', 'Vellamo, Meri', 'Airi, Aira',
                  'Hannu, Hannes', 'Piia', 'Rauha', 'Daavid, Taavetti, Taavi',
                  'Sylvester, Silvo'])
 
+#def wday_str(i):
+#    i = i % 7
+#    return ['su', 'ma', 'ti', 'ke', 'to', 'pe', 'la'][i]
+
+# Back to the old file
 def wday_str(i):
     i = i % 7
-    return ['su', 'ma', 'ti', 'ke', 'to', 'pe', 'la'][i]
+    return ['Maanantai', 'Tiistai', 'Keskiviikko', 'Torstai', 'Perjantai', 'Lauantai', 'Sunnuntai'][i]
 
 def get_nameday(month, day):
     return namedays[month - 1][day - 1]

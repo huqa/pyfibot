@@ -24,6 +24,21 @@ from util import pyfiurl
 # line splitting
 import textwrap
 
+# pickle for saving words stats
+import pickle
+
+#Scheduler for day end stats
+from apscheduler.scheduler import Scheduler
+#import apscheduler
+# pvm class
+from lib import pvm
+# inputstream that outputs log files to an opened private session
+from lib import privmsg_stream
+# kiva tietää
+from datetime import datetime
+from random import randint
+
+
 __pychecker__ = 'unusednames=i, classattr'
 
 log = logging.getLogger("bot")
@@ -59,6 +74,7 @@ class CoreCommands(object):
                 self.say(channel, "Rehash error: %s" % e)
                 log.error("Rehash error: %s" % e)
             else:
+                self.save_words_to_file()
                 self.say(channel, "Rehash OK")
                 log.info("Rehash OK")
 
@@ -147,7 +163,8 @@ class CoreCommands(object):
         if not self.factory.isAdmin(user):
             return
 
-        self.quit("Working as programmed")
+        self.save_words_to_file()
+        self.quit("suuttu")
         self.hasQuit = 1
 
     def command_channels(self, user, channel, args):
@@ -177,19 +194,48 @@ class CoreCommands(object):
             commandlist = ", ".join([c for c, ref in commands])
             self.say(channel, "Available commands: %s" % commandlist)
 
+    def command_irclogger(self, user, channel, args):
+        """Private message warning&error-log toggling for admins"""
+        if not self.factory.isAdmin(user):
+            return
+        else:
+            # is the command from a private msg
+            if self.factory.isAdmin(channel):
+                args.strip()
+                if not args or args == "start":
+                    if user in self.log_streamers:
+                        if not self.log_streamers[user]:
+                            self.log_streamers[user] = True
+                            self.say(user, "Virheloggaus aloitettu")
+                    else:
+                        self.log_streamers[user] = True
+                        self.say(user, "Virheloggaus aloitettu")
+                    if not self.handler:
+                        # setup a privmsg_handler that outputs logs to admins what have flagged !irclogger
+                        self.handler = logging.StreamHandler(privmsg_stream.PrivmsgStream(self))
+                        # level warning -> error -> critical
+                        self.handler.setLevel(logging.WARNING)
+                        log.addHandler(self.handler)
+                    return
+                elif args == "stop":
+                    self.log_streamers[user] = False
+                    self.say(user, "Virheloggaus lopetettu")
+                    # TODO remove handler when loggers are empty
+                    return
+
 
 class PyFiBot(irc.IRCClient, CoreCommands):
     """PyFiBot"""
 
-    nickname = "pyfibot"
-    realname = "https://github.com/lepinkainen/pyfibot"
+    nickname = "tofi"
+    realname = "Sää oot tofi vaffa botti"
     password = None
 
     # send 2 msgs per second max
     lineRate = 0.5
     hasQuit = False
 
-    CMDCHAR = "."
+    CMDCHAR = "!"
 
     # Rolling ping time average
     pingAve = 0.0
@@ -201,6 +247,22 @@ class PyFiBot(irc.IRCClient, CoreCommands):
         self.password = self.network.password
         # Text wrapper to clip overly long answers
         self.tw = textwrap.TextWrapper(width=400, break_long_words=True)
+        self.scheduler = self.init_scheduler()
+        # Chanstat words
+        self.words = {}
+        # Chanstat words today savefile
+        self.words_filename = "words_" + str(self.network.alias) + ".save"
+        # End of day reminder helper
+        self.load_words_from_file()
+        self.pvm = pvm.Pvm(self)
+        # shout users at midnight
+        self.pvm.midnight_shout()
+        # dictionary of admins that have flagged private logging on
+        self.log_streamers = {}
+        # not sure if this is needed as a field
+        self.handler = None
+        # kiva tietää
+        self.kt = False
         log.info("bot initialized")
 
     def __repr__(self):
@@ -297,6 +359,9 @@ class PyFiBot(irc.IRCClient, CoreCommands):
     def getUrl(self, url, nocache=False, params=None, headers=None, cookies=None):
         return self.factory.getUrl(url, nocache, params, headers, cookies)
 
+    def _getNick(self,user):
+        return self.factory.getNick(user)
+
     def log(self, message):
         botId = "%s@%s" % (self.nickname, self.network.alias)
         log.info("%s: %s", botId, message)
@@ -311,6 +376,12 @@ class PyFiBot(irc.IRCClient, CoreCommands):
         @param channel: Channel where the message originated from
         @param msg: The actual message
         """
+
+        # Ignoring privmsgs from ignored users
+        nick = self.getNick(user)
+        for n in self.factory.config['networks'][self.network.alias]['ignored_nicks']:
+            if n.lower() == nick.lower():
+                return
 
         channel = channel.lower()
         lmsg = msg.lower()
@@ -342,6 +413,30 @@ class PyFiBot(irc.IRCClient, CoreCommands):
         if urls:
             for url in urls:
                 self._runhandler("url", user, reply, url, msg)
+        else:
+            # Word stats functionality
+            if not msg.startswith(self.CMDCHAR):
+                stripped_msg = msg.strip()
+                #TODO kiva tietää service goes here
+                #kiva_tietaa service
+                if self.kt == False:
+                    dt = datetime.now()
+                    if dt.hour == 3:
+                        luku = randint(1,10)
+                        if len(stripped_msg) > 70 and len(stripped_msg) <= 133 and luku <= 8:
+                            self._runhandler("kivatietaa", user, reply, stripped_msg)
+                            self.kt = True
+                word_count = stripped_msg.split(" ")
+                if channel in self.words:
+                    if nick in self.words[channel]:
+                        # add word count to existing entry
+                        self.words[channel][nick] += len(word_count)
+                    else:
+                        # new entry - begin counting words
+                        self.words[channel][nick] = len(word_count)
+                else:
+                    self.words[channel] = {}
+                    self.words[channel][nick] = len(word_count)
 
     def _runhandler(self, handler, *args, **kwargs):
         """Run a handler for an event"""
@@ -457,6 +552,61 @@ class PyFiBot(irc.IRCClient, CoreCommands):
     def quit(self, message=''):
         message = self.factory.to_utf8(message)
         return super(PyFiBot, self).quit(message)
+
+    #save and load word files
+    def save_words_to_file(self):
+        try:
+            with open(self.words_filename, 'wb') as output:
+                pickle.dump(self.words, output, pickle.HIGHEST_PROTOCOL)
+                log.info("Word stats saved successfully")
+        except IOError:
+            log.info("Failed to save word stats")
+
+    def load_words_from_file(self):
+        try:
+            with open(self.words_filename, 'rb') as inpt:
+                self.words = pickle.load(inpt)
+                log.info("Word stats loaded successfully")
+        except IOError:
+            log.info("Failed to load word stats, creating new file")
+            self.save_words_to_file()
+
+    # getter for word stats
+    def get_words(self):
+        return self.words
+
+    # Clears words and the file
+    def clear_words(self):
+        self.words.clear()
+        self.save_words_to_file()
+
+    def get_channels(self):
+        return self.factory.config['networks'][self.network.alias]['channels']
+
+    def get_ignored_channels(self):
+        return self.factory.config['networks'][self.network.alias]['ignored_chans_for_stats']
+
+    def get_channels_for_stats(self):
+        chans = []
+        ignored_chans = self.get_ignored_channels()
+        for ch in self.get_channels():
+            if ignored_chans:
+                if ch not in ignored_chans:
+                    chans.append(ch)
+            else:
+                chans.append(ch)
+        return chans
+
+    def get_pvm(self):
+        return self.pvm
+
+    def init_scheduler(self):
+        scheduler = Scheduler()
+        scheduler.start()
+        return scheduler
+
+    def get_admins(self):
+        return self.factory.config['admins']
 
     ### Overrides for twisted.words.irc internal commands ###
     def XXregister(self, nickname, hostname='foo', servername='bar'):
