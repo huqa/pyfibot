@@ -11,7 +11,7 @@ databases/
 etc
 doc
 
-*.py[cod]
+
 
 # C extensions
 *.so
