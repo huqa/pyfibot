@@ -116,6 +116,7 @@ class PyFiBotFactory(ThrottledClientFactory):
     def stopFactory(self):
         del self.allBots
         ThrottledClientFactory.stopFactory(self)
+        reactor.stop()
         log.info("factory stopped")
 
     def buildProtocol(self, address):
