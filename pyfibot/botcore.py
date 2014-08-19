@@ -28,7 +28,7 @@ import textwrap
 import pickle
 
 #Scheduler for day end stats
-from apscheduler.scheduler import Scheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 #import apscheduler
 # pvm class
 from lib import pvm
@@ -228,7 +228,7 @@ class PyFiBot(irc.IRCClient, CoreCommands):
     """PyFiBot"""
 
     nickname = "tofi"
-    realname = "Sää oot tofi vaffa botti"
+    realname = "Sä oot tofi vaffa botti"
     password = None
 
     # send 2 msgs per second max
@@ -378,7 +378,7 @@ class PyFiBot(irc.IRCClient, CoreCommands):
         """
 
         # Ignoring privmsgs from ignored users
-        nick = self.getNick(user)
+        nick = self._getNick(user)
         for n in self.factory.config['networks'][self.network.alias]['ignored_nicks']:
             if n.lower() == nick.lower():
                 return
@@ -601,7 +601,7 @@ class PyFiBot(irc.IRCClient, CoreCommands):
         return self.pvm
 
     def init_scheduler(self):
-        scheduler = Scheduler()
+        scheduler = BackgroundScheduler()
         scheduler.start()
         return scheduler
 

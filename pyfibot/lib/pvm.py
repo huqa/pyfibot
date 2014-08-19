@@ -22,8 +22,9 @@ class Pvm(object):
         
     # remind every day at midnight
     def midnight_shout(self):
-        self.bot.scheduler.add_cron_job(self.shout_pvm_stats, second='0', month='*', day='*', hour='0', minute='0', day_of_week='*')
-    
+        #self.bot.scheduler.add_cron_job(self.shout_pvm_stats, second='0', month='*', day='*', hour='0', minute='0', day_of_week='*')
+        self.bot.scheduler.add_job(self.shout_pvm_stats, 'cron', month='*', day='*', day_of_week='*', hour='0', minute='0', second='0')
+
     def shout_pvm_stats(self):
         """Internal command for shouting word stats and day info at midnight"""
         if not self.bot:
